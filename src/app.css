@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    @font-face {
+        font-family: 'Nunito Sans';
+        src: local('Nunito Sans'), url("/fonts/NunitoSans-VariableFont_YTLC,opsz,wdth,wght.ttf");
+        font-weight: normal;
+        font-display: swap;
+    }
+}
