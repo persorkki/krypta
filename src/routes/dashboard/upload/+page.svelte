@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
+
 	let currentFile: File | undefined;
 	function evntFileDropped(event: DragEvent) {
 		//TODO: set file to a variable and make a rudimentary upload functional
 
 		currentFile = event.dataTransfer?.files[0];
 		dragStyle = 'bg-zinc-900';
-	
 	}
 	let dragStyle = '';
 
@@ -46,7 +47,7 @@
 	<div class="text-justify pb-6">
 		<p>❗ only <span class="text-rose-600">.gif</span> uploads allowed</p>
 		<!-- TODO: add GET endpoint to get the max file size limit from the server -->
-		<p>❗ size limit is 3MiB</p>
+		<p>❗ size limit is {parseInt(PUBLIC_FILE_SIZE_LIMIT) / 1000000} MB</p>
 	</div>
 
 	<!-- upload box -->
@@ -72,7 +73,8 @@
 			</label>
 		</div>
 		<!--TODO: remove button -->
-		<div on:click={uploadFile} 
+		<div
+			on:click={uploadFile}
 			class="items-center flex justify-center w-full bg-emerald-900 hover:bg-emerald-700 rounded-sm cursor-pointer"
 		>
 			<div class="p-4 text-lg font-bold">upload</div>

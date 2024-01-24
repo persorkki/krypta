@@ -9,13 +9,21 @@ import sharp from 'sharp';
 import sanitize from 'sanitize-filename';
 import { Storage } from '@google-cloud/storage';
 
+import mysql from 'mysql2';
+
 // .env
-import { SERVICE_ACCOUNT_JSON_PATH, GIF_BUCKET_NAME } from '$env/static/private';
+import {
+	SERVICE_ACCOUNT_JSON_PATH,
+	GIF_BUCKET_NAME,
+	OPTIMIZED_BUCKET_FOLDER,
+	DATABASE_URL
+} from '$env/static/private';
+
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
 
 const MAX_FILESIZE = parseInt(PUBLIC_FILE_SIZE_LIMIT);
 
-const ReturnCodes = {
+const ResponseStatus = {
 	NO_FILE: {
 		message: 'No file provided or the provided entity is not a valid file.',
 		status: 400,
@@ -76,24 +84,24 @@ function onlyChangeFileExt(srcFilename: string, outputType: string) {
 export async function POST({ request }: { request: Request }): Promise<Response> {
 	const contentType = request.headers.get('Content-Type');
 	if (!contentType || !contentType.includes('multipart')) {
-		return json(ReturnCodes.NO_FILE);
+		return json(ResponseStatus.NO_FILE);
 	}
 
 	const formData = await request.formData();
 	const file = formData.get('file');
 
 	if (!file || !(file instanceof File)) {
-		return json(ReturnCodes.NO_FILE);
+		return json(ResponseStatus.NO_FILE);
 	}
 
 	const arrayBuffer = await file.arrayBuffer();
 
 	if (!validateGifAttributes(file) || !validateSignature(arrayBuffer)) {
-		return json(ReturnCodes.INVALID_FILE);
+		return json(ResponseStatus.INVALID_FILE);
 	}
 
 	if (file.size > MAX_FILESIZE) {
-		return json(ReturnCodes.FILE_TOO_BIG);
+		return json(ResponseStatus.FILE_TOO_BIG);
 	}
 
 	const srcFilename = sanitize(file.name);
@@ -110,11 +118,12 @@ export async function POST({ request }: { request: Request }): Promise<Response>
 		sharpFile.gif().toBuffer((err, data, info) => {
 			if (err) {
 				console.log(err);
-				reject(json(ReturnCodes.INVALID_FILE));
+				reject(json(ResponseStatus.INVALID_FILE));
 			} else {
 				try {
 					const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
-					const blob = storage.bucket(GIF_BUCKET_NAME).file(outputFilename);
+					const optimizedFilename = path.join(OPTIMIZED_BUCKET_FOLDER, outputFilename);
+					const blob = storage.bucket(GIF_BUCKET_NAME).file(optimizedFilename);
 
 					const blobStream = blob.createWriteStream({
 						metadata: {
@@ -125,14 +134,30 @@ export async function POST({ request }: { request: Request }): Promise<Response>
 					/* event listeners */
 					blobStream.on('error', (err) => {
 						console.log('error uploading stream: ' + err);
-						reject(json(ReturnCodes.INVALID_FILE));
+						reject(json(ResponseStatus.INVALID_FILE));
 					});
 					blobStream.on('finish', () => {
 						console.log('upload to Google Cloud complete!');
 					});
 
 					blobStream.end(data);
-					resolve(json(ReturnCodes.SUCCESS));
+					
+					const cloud_url = `https://storage.googleapis.com/${GIF_BUCKET_NAME}/${optimizedFilename}`;
+
+					const connection = mysql.createConnection(DATABASE_URL)
+					const sql = "INSERT INTO images (url) VALUES (?)"
+
+					connection.query(sql, [cloud_url], (error, results, fields) => {
+						if (error) {
+							console.log(error);
+						}
+						console.log(results)
+					})
+				
+
+
+					resolve(json(ResponseStatus.SUCCESS));
+
 				} catch (err) {
 					console.log(`error uploading to Google Cloud: ${err}`);
 				}
