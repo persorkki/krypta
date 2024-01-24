@@ -1,17 +1,19 @@
+// sveltekit
 import { json } from '@sveltejs/kit';
-import { promises as fs } from 'fs';
-import join from 'path';
-import path from 'path';
-import sharp from 'sharp';
 
-const MAX_FILESIZE = 4000000;
-/*
-interface ResponseMessage {
-	message: string
-	status: number
-	statusText: string
-}
-*/
+// nodejs
+import path from 'path';
+
+// 3rd party
+import sharp from 'sharp';
+import sanitize from 'sanitize-filename';
+import { Storage } from '@google-cloud/storage';
+
+// .env
+import { SERVICE_ACCOUNT_JSON_PATH, GIF_BUCKET_NAME } from '$env/static/private';
+import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
+
+const MAX_FILESIZE = parseInt(PUBLIC_FILE_SIZE_LIMIT);
 
 const ReturnCodes = {
 	NO_FILE: {
@@ -49,6 +51,7 @@ function validateSignature(signature: ArrayBuffer) {
 	if (signature_slice.equals(GIF87a_SIG) || signature_slice.equals(GIF89a_SIG)) {
 		return true;
 	}
+
 	return false;
 }
 
@@ -56,12 +59,18 @@ function validateGifAttributes(file: File): boolean {
 	return file.type == 'image/gif' && path.extname(file.name) == '.gif';
 }
 
-function changeFileExt(file: File, outputType: string) {
+function changeFileExt(srcFilename: string, outputType: string) {
 	const savePath = 'static/';
-	const inputFilename = path.basename(file.name, path.extname(file.name));
+	const inputFilename = path.basename(srcFilename, path.extname(srcFilename));
 	const outputFilename = inputFilename + outputType;
 
 	return path.join(savePath, outputFilename);
+}
+
+function onlyChangeFileExt(srcFilename: string, outputType: string) {
+	const inputFilename = path.basename(srcFilename, path.extname(srcFilename));
+
+	return inputFilename + outputType;
 }
 
 export async function POST({ request }: { request: Request }): Promise<Response> {
@@ -87,27 +96,49 @@ export async function POST({ request }: { request: Request }): Promise<Response>
 		return json(ReturnCodes.FILE_TOO_BIG);
 	}
 
-	const outputFilePath = changeFileExt(file, '.webp');
+	const srcFilename = sanitize(file.name);
+	//const outputFilePath = changeFileExt(srcFilename, '.webp');
+	const outputFilename = onlyChangeFileExt(srcFilename, '.gif');
 
 	// TODO: here we should check if a file with this name already exists on the server
 	// if we compare hashes we have to do it after re-encode which will be pretty bad for performance
 	// should we save the src file hash to the database?
 
 	const sharpFile = sharp(arrayBuffer, { animated: true });
+
 	const processFile: Promise<Response> = new Promise((resolve, reject) => {
-		sharpFile.webp({ quality: 50 }).toFile(outputFilePath, (err, info) => {
+		sharpFile.gif().toBuffer((err, data, info) => {
 			if (err) {
-				//console.log(err);
-				console.debug(err);
+				console.log(err);
 				reject(json(ReturnCodes.INVALID_FILE));
 			} else {
-				//console.log(info);
-				console.debug(info);
-				resolve(json(ReturnCodes.SUCCESS));
+				try {
+					const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
+					const blob = storage.bucket(GIF_BUCKET_NAME).file(outputFilename);
+
+					const blobStream = blob.createWriteStream({
+						metadata: {
+							contentType: 'image/gif'
+						}
+					});
+
+					/* event listeners */
+					blobStream.on('error', (err) => {
+						console.log('error uploading stream: ' + err);
+						reject(json(ReturnCodes.INVALID_FILE));
+					});
+					blobStream.on('finish', () => {
+						console.log('upload to Google Cloud complete!');
+					});
+
+					blobStream.end(data);
+					resolve(json(ReturnCodes.SUCCESS));
+				} catch (err) {
+					console.log(`error uploading to Google Cloud: ${err}`);
+				}
 			}
 		});
 	});
-
 
 	return await processFile;
 }
