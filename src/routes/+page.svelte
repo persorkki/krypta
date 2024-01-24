@@ -13,12 +13,13 @@
 			: data.images.filter((x) => x.url.includes(filterText));
 </script>
 
-<div class="justify-center rounded-xl">
-	<div class="flex justify-center gap-3 pt-6">
-		<div>filter</div>
-		<input use:focusOnMount class="w-1/5 outline-none text-black px-2" bind:value={filterText} />
+<div class="justify-center">
+	<div class="flex justify-center text-lg p-2 px-6">
+		
+		<input use:focusOnMount class="w-1/5 px-3 py-1 outline-none bg-white text-black placeholder-zinc-700" placeholder="type here to filter..." bind:value={filterText} />
+		
 	</div>
-	<div class="flex flex-wrap justify-center p-6">
+	<div class="flex flex-wrap justify-center px-6">
 		{#each filteredData as image}
 			<img class="object-cover h-40 w-1/5" src={image.url} alt={image.url} />
 		{/each}
