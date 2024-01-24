@@ -3,9 +3,9 @@
     export let href: string;
 
     export let activePath: string;
-	$: activeLink = activePath === href ? 'text-emerald-600' : 'text-white hover:text-zinc-300';
+	$: activeLink = activePath === href ? ' border-b-emerald-600 ' : 'text-white hover:text-zinc-700';
 </script>
 
-<a {href} class="{activeLink} font-semibold  rounded-md cursor-pointer">
+<a {href} class="{activeLink} font-semibold  cursor-pointer border-b-2 border-transparent">
 	{text}
 </a>
