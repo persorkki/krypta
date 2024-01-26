@@ -1,5 +1,5 @@
 // sveltekit
-import { json } from '@sveltejs/kit';
+import { json, type RequestHandler } from '@sveltejs/kit';
 
 // nodejs
 import path from 'path';
@@ -9,14 +9,11 @@ import sharp from 'sharp';
 import sanitize from 'sanitize-filename';
 import { Storage } from '@google-cloud/storage';
 
-import mysql from 'mysql2';
-
 // .env
 import {
 	SERVICE_ACCOUNT_JSON_PATH,
 	GIF_BUCKET_NAME,
 	OPTIMIZED_BUCKET_FOLDER,
-	DATABASE_URL
 } from '$env/static/private';
 
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
@@ -81,7 +78,7 @@ function onlyChangeFileExt(srcFilename: string, outputType: string) {
 	return inputFilename + outputType;
 }
 
-export async function POST({ request }: { request: Request }): Promise<Response> {
+export const POST: RequestHandler = async ({ request, locals }) => {
 	const contentType = request.headers.get('Content-Type');
 	if (!contentType || !contentType.includes('multipart')) {
 		return json(ResponseStatus.NO_FILE);
@@ -141,23 +138,20 @@ export async function POST({ request }: { request: Request }): Promise<Response>
 					});
 
 					blobStream.end(data);
-					
+
 					const cloud_url = `https://storage.googleapis.com/${GIF_BUCKET_NAME}/${optimizedFilename}`;
 
-					const connection = mysql.createConnection(DATABASE_URL)
-					const sql = "INSERT INTO images (url) VALUES (?)"
+					const connection = locals.db;
+					const sql = 'INSERT INTO images (url) VALUES (?)';
 
 					connection.query(sql, [cloud_url], (error, results, fields) => {
 						if (error) {
 							console.log(error);
 						}
-						console.log(results)
-					})
-				
-
+						console.log(results);
+					});
 
 					resolve(json(ResponseStatus.SUCCESS));
-
 				} catch (err) {
 					console.log(`error uploading to Google Cloud: ${err}`);
 				}
@@ -166,4 +160,4 @@ export async function POST({ request }: { request: Request }): Promise<Response>
 	});
 
 	return await processFile;
-}
+};

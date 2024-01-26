@@ -10,5 +10,6 @@
 	<div class="flex flex-col gap-6 p-6 w-full border-r-zinc-800 h-screen border-r">
 		<Link {activePath} href="/dashboard/upload" text="upload" />
 		<Link {activePath} href="/dashboard" text="messages" />
+		<Link {activePath} href="/dashboard/maintenance" text="maintenance" />
 	</div>
 </div>

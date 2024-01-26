@@ -10,6 +10,15 @@
 	}
 	let dragStyle = '';
 
+	function filePicked(event: Event) {
+		const input = event.target as HTMLInputElement;
+		if (!input.files) {
+			return;
+		}
+		currentFile = input.files[0];
+		dragStyle = 'bg-zinc-900';
+	}
+
 	async function uploadFile() {
 		if (currentFile) {
 			const formData = new FormData();
@@ -61,6 +70,7 @@
 				on:dragleave={() => {
 					dragStyle = 'bg-zinc-900';
 				}}
+				on:input={filePicked}
 				for="dropzone"
 				class="w-full items-center flex flex-col justify-center h-full {dragStyle} truncate border-dashed border-2 border-emerald-900 hover:border-emerald-700"
 			>
