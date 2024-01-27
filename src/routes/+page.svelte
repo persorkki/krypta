@@ -13,15 +13,42 @@
 			: data.images.filter((x) => x.original_file_url.includes(filterText));
 </script>
 
+<div class="text-neutral-500 text-md w-4/5 mx-auto">
+	<!-- filter -->
+	<div class=" flex justify-center rounded-tr-xl rounded-tl-xl py-3">
+		<div class="w-2/6 py-1 gap-3 p-1 flex bg-neutral-50 border-b-4 border-b-emerald-500 text-lg outline-none">
+			<input
+				class="w-full outline-none bg-neutral-50"
+				placeholder="type here to filter..."
+			/>
+			<img class="w-[41px] pointer-events-none cursor-auto" src="SearchOutlined.svg" alt="search icon" />
+		</div>
+	</div>
+	<!-- gallery -->
+	<div class="flex flex-wrap">
+		{#each data.images as image}
+			<img
+				class="aspect-video w-1/5 object-cover"
+				src={image.original_file_url}
+				alt={image.original_file_url}
+			/>
+		{/each}
+	</div>
+</div>
+<!--
 <div class="justify-center">
 	<div class="flex justify-center py-3 px-6">
+
 		<label class="py-3 w-2/5 bg-zinc-900 text-white flex border-b-2 border-b-emerald-600">
+			
+			
 			<input
 				use:focusOnMount
 				class="w-full text-center outline-none text-lg bg-zinc-900 "
 				placeholder="type here to filter..."
 				bind:value={filterText}
 			/>
+			
 			<svg
 				class="h-[28px]"
 				version="1.1"
@@ -41,6 +68,7 @@
 				></path></svg
 			>
 		</label>
+		
 	</div>
 	<div class="flex flex-wrap justify-center px-6">
 		{#each filteredData as image}
@@ -48,3 +76,4 @@
 		{/each}
 	</div>
 </div>
+-->
