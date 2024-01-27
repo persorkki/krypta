@@ -10,4 +10,4 @@ CREATE TABLE messages (
     message varchar(2000),
     url varchar(255),
     isOnline tinyint(1)
-)
+);

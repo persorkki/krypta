@@ -18,7 +18,7 @@ import { SERVICE_ACCOUNT_JSON_PATH, GIF_BUCKET_NAME } from '$env/static/private'
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
 
 // db
-import { SQL_Upload } from '$lib/database/sql_queries';
+import { SQL_Statements} from '$lib/database/sql_queries';
 
 const MAX_FILESIZE = parseInt(PUBLIC_FILE_SIZE_LIMIT);
 
@@ -83,6 +83,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const sharpFile = sharp(arrayBuffer, { animated: true });
 	const gif = await sharpFile.gif().toBuffer();
 
+	
+
 	// ------------------------------------------------------------
 	// Database Operations
 	// ------------------------------------------------------------
@@ -95,10 +97,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		];
 
 		const connection = locals.db; // TODO: needs a type
-		const sql = SQL_Upload;
+		const sql = SQL_Statements.upload
 
 		const [result] = await connection.query(sql, sqlValues);
-		
+
 	} catch (err) {
 		const sqlError = err as MySQLError;
 		let returnError = ResponseStatus.UNKNOWN_ERROR;

@@ -3,7 +3,10 @@
     export let href: string;
 
     export let activePath: string;
-	$: activeLink = activePath === href ? ' border-b-emerald-600 ' : 'text-white hover:text-zinc-700';
+	//const isNotRoot = activePath != "/"
+	$: activeLink = activePath === href || (activePath.includes(href) && href !=  "/" ) ? ' border-b-emerald-600 ' : 'text-white hover:text-zinc-700';
+	console.log(activePath);
+	
 </script>
 
 <a {href} class="{activeLink} font-semibold  cursor-pointer border-b-2 border-transparent">
