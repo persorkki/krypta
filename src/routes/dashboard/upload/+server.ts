@@ -3,6 +3,9 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 // nodejs
 import path from 'path';
+import crypto from 'crypto';
+import { Readable } from 'stream';
+import stream from 'stream/promises';
 
 // 3rd party
 import sharp from 'sharp';
@@ -10,38 +13,16 @@ import sanitize from 'sanitize-filename';
 import { Storage } from '@google-cloud/storage';
 
 // .env
-import {
-	SERVICE_ACCOUNT_JSON_PATH,
-	GIF_BUCKET_NAME,
-	OPTIMIZED_BUCKET_FOLDER,
-} from '$env/static/private';
+import { SERVICE_ACCOUNT_JSON_PATH, GIF_BUCKET_NAME } from '$env/static/private';
 
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
 
+// db
+import { SQL_Upload } from '$lib/database/sql_queries';
+
 const MAX_FILESIZE = parseInt(PUBLIC_FILE_SIZE_LIMIT);
 
-const ResponseStatus = {
-	NO_FILE: {
-		message: 'No file provided or the provided entity is not a valid file.',
-		status: 400,
-		statusText: 'Bad Request'
-	},
-	INVALID_FILE: {
-		message: 'File is not a valid .gif file',
-		status: 415,
-		statusText: 'Unsupported Media Type'
-	},
-	FILE_TOO_BIG: {
-		message: `File size is over the maximum size limit ${MAX_FILESIZE / 1000000} MiB`,
-		status: 413,
-		statusText: 'Content Too Large'
-	},
-	SUCCESS: {
-		message: 'File uploaded successfully',
-		status: 200,
-		statusText: 'OK'
-	}
-};
+import { ResponseStatus } from './uploadResponses';
 
 /**
  * looks for GIF signatures in the first bytes of the binary content.
@@ -53,29 +34,23 @@ function validateSignature(signature: ArrayBuffer) {
 	const GIF87a_SIG = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]);
 	const GIF89a_SIG = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
 
-	if (signature_slice.equals(GIF87a_SIG) || signature_slice.equals(GIF89a_SIG)) {
-		return true;
-	}
-
-	return false;
+	return (signature_slice.equals(GIF87a_SIG) || signature_slice.equals(GIF89a_SIG))
 }
 
 function validateGifAttributes(file: File): boolean {
 	return file.type == 'image/gif' && path.extname(file.name) == '.gif';
 }
 
-function changeFileExt(srcFilename: string, outputType: string) {
-	const savePath = 'static/';
-	const inputFilename = path.basename(srcFilename, path.extname(srcFilename));
-	const outputFilename = inputFilename + outputType;
-
-	return path.join(savePath, outputFilename);
-}
-
 function onlyChangeFileExt(srcFilename: string, outputType: string) {
 	const inputFilename = path.basename(srcFilename, path.extname(srcFilename));
 
 	return inputFilename + outputType;
+}
+
+function getHash(buffer: Buffer): string {
+	const hash = crypto.createHash('md5');
+	hash.update(buffer);
+	return hash.digest('hex');
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -105,59 +80,56 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	//const outputFilePath = changeFileExt(srcFilename, '.webp');
 	const outputFilename = onlyChangeFileExt(srcFilename, '.gif');
 
-	// TODO: here we should check if a file with this name already exists on the server
-	// if we compare hashes we have to do it after re-encode which will be pretty bad for performance
-	// should we save the src file hash to the database?
-
 	const sharpFile = sharp(arrayBuffer, { animated: true });
+	const gif = await sharpFile.gif().toBuffer();
 
-	const processFile: Promise<Response> = new Promise((resolve, reject) => {
-		sharpFile.gif().toBuffer((err, data, info) => {
-			if (err) {
-				console.log(err);
-				reject(json(ResponseStatus.INVALID_FILE));
-			} else {
-				try {
-					const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
-					const optimizedFilename = path.join(OPTIMIZED_BUCKET_FOLDER, outputFilename);
-					const blob = storage.bucket(GIF_BUCKET_NAME).file(optimizedFilename);
+	// ------------------------------------------------------------
+	// Database Operations
+	// ------------------------------------------------------------
 
-					const blobStream = blob.createWriteStream({
-						metadata: {
-							contentType: 'image/gif'
-						}
-					});
+	try {
+		const sqlValues = [
+			`https://storage.googleapis.com/${GIF_BUCKET_NAME}/${outputFilename}`, // original_file_url
+			`https://storage.googleapis.com/${GIF_BUCKET_NAME}/${outputFilename}`, // compressed_file_url
+			getHash(gif) // md5hash
+		];
 
-					/* event listeners */
-					blobStream.on('error', (err) => {
-						console.log('error uploading stream: ' + err);
-						reject(json(ResponseStatus.INVALID_FILE));
-					});
-					blobStream.on('finish', () => {
-						console.log('upload to Google Cloud complete!');
-					});
+		const connection = locals.db; // TODO: needs a type
+		const sql = SQL_Upload;
 
-					blobStream.end(data);
+		const [result] = await connection.query(sql, sqlValues);
+		
+	} catch (err) {
+		const sqlError = err as MySQLError;
+		let returnError = ResponseStatus.UNKNOWN_ERROR;
 
-					const cloud_url = `https://storage.googleapis.com/${GIF_BUCKET_NAME}/${optimizedFilename}`;
+		// duplicate entry error
+		if (sqlError.errno === 1062) {
+			returnError = ResponseStatus.DUPLICATE_ENTRY;
+		}
 
-					const connection = locals.db;
-					const sql = 'INSERT INTO images (url) VALUES (?)';
+		// TODO: add error logging
 
-					connection.query(sql, [cloud_url], (error, results, fields) => {
-						if (error) {
-							console.log(error);
-						}
-						console.log(results);
-					});
+		return json(returnError);
+	}
 
-					resolve(json(ResponseStatus.SUCCESS));
-				} catch (err) {
-					console.log(`error uploading to Google Cloud: ${err}`);
-				}
+	// ------------------------------------------------------------
+	// Cloud Storage Operations
+	// ------------------------------------------------------------
+
+	try {
+		const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
+		const blob = storage.bucket(GIF_BUCKET_NAME).file(outputFilename);
+		const blobStream = blob.createWriteStream({
+			metadata: {
+				contentType: 'image/gif'
 			}
 		});
-	});
+		await stream.pipeline(Readable.from(gif), blobStream);
+	} catch (err) {
+		//TODO: add error interface
+		return json(ResponseStatus.UNKNOWN_ERROR); // TODO: cloud upload error
+	}
 
-	return await processFile;
+	return json(ResponseStatus.SUCCESS);
 };

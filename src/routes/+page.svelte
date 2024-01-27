@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** @type {import('./$types').PageData} */
-	export let data: { images: { url: string }[] };
+	export let data: { images: { original_file_url: string }[] };
 	let filterText = '';
 
 	function focusOnMount(element: HTMLElement) {
@@ -10,7 +10,7 @@
 	$: filteredData =
 		filterText.length === 0
 			? [...data.images]
-			: data.images.filter((x) => x.url.includes(filterText));
+			: data.images.filter((x) => x.original_file_url.includes(filterText));
 </script>
 
 <div class="justify-center">
@@ -44,7 +44,7 @@
 	</div>
 	<div class="flex flex-wrap justify-center px-6">
 		{#each filteredData as image}
-			<img class="object-cover h-40 w-1/5" src={image.url} alt={image.url} />
+			<img class="object-cover h-40 w-1/5" src={image.original_file_url} alt={image.original_file_url} />
 		{/each}
 	</div>
 </div>

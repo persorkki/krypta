@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
 
+	let uploadState = 'ready';
 	let currentFile: File | undefined;
-	function evntFileDropped(event: DragEvent) {
+	function eventFileDropped(event: DragEvent) {
 		//TODO: set file to a variable and make a rudimentary upload functional
 
 		currentFile = event.dataTransfer?.files[0];
@@ -21,6 +22,7 @@
 
 	async function uploadFile() {
 		if (currentFile) {
+			uploadState = "uploading...";
 			const formData = new FormData();
 			formData.append('file', currentFile);
 
@@ -38,13 +40,14 @@
 				currentFile = undefined;
 				try {
 					const response = await res.json();
-					console.log(response);
+					
+					uploadState = response.message
 				} catch (error) {
-					console.log(res);
-					console.log(error);
+					uploadState = "Server didn't send a valid response"
 				}
-
-				console.log('hello');
+			}
+			else {
+				uploadState = "error during upload";
 			}
 		}
 	}
@@ -61,9 +64,11 @@
 
 	<!-- upload box -->
 	<form class=" flex flex-col gap-6">
+		<div class="mx-auto">{uploadState}</div> <!-- add colors and shit-->
+
 		<div class="h-60 items-center flex justify-center rounded-sm">
 			<label
-				on:drop|preventDefault={evntFileDropped}
+				on:drop|preventDefault={eventFileDropped}
 				on:dragover|preventDefault={() => {
 					dragStyle = 'bg-zinc-500';
 				}}
