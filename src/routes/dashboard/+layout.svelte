@@ -4,7 +4,7 @@
 	import { page } from '$app/stores';
 </script>
 
-<div class="w-4/5 mx-auto py-12">
+<div class="w-4/5 mx-auto py-6">
 	<div class="grid grid-cols-5">
 		<nav in:slide={{ axis: 'x', duration: 600 }} class="py-3">
 			<!-- TODO: make into components -->
