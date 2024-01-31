@@ -5,3 +5,10 @@ interface MySQLError extends Error {
 	sqlState: string;
 	sqlMessage: string;
 }
+
+interface Uploadable {
+	fileName: string,
+	localPath : string,
+	remotePath : string,
+	contentType :  'video/webm' | 'image/gif',
+}

@@ -3,7 +3,11 @@
 	import Nav from '$lib/components/Nav.svelte';
 </script>
 
-<div class="min-h-screen font-nunito bg-neutral-50 text-neutral-500">
-	<Nav />
-	<slot />
+<div class="min-h-screen font-nunito bg-bg dark:bg-bg-dark dark:text-primary-dark text-primary flex flex-col transition-colors duration-2000">
+	<div>
+		<Nav />
+	</div>
+	<div>
+		<slot />
+	</div>	
 </div>

@@ -4,134 +4,234 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 // nodejs
 import path from 'path';
 import crypto from 'crypto';
+import { readFile, unlink } from 'fs/promises';
 import { Readable } from 'stream';
-import stream from 'stream/promises';
 
 // 3rd party
-import sharp from 'sharp';
 import sanitize from 'sanitize-filename';
-import { Storage } from '@google-cloud/storage';
+import ffmpeg from 'fluent-ffmpeg';
+import sharp from 'sharp';
+import mysql from 'mysql2/promise';
 
-// .env
-import { SERVICE_ACCOUNT_JSON_PATH, GIF_BUCKET_NAME } from '$env/static/private';
+// services
+import { Upload, getRemotePath } from '$lib/services/storage';
 
+//.env public
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
+import { SQL_Statements } from '$lib/database/sql_queries';
 
 // db
-import { SQL_Statements} from '$lib/database/sql_queries';
+import { pool } from '$lib/database/db';
 
-const MAX_FILESIZE = parseInt(PUBLIC_FILE_SIZE_LIMIT);
-
-import { ResponseStatus } from './uploadResponses';
-
-/**
- * looks for GIF signatures in the first bytes of the binary content.
- * returns true if a GIF signature is found; otherwise false
- */
-function validateSignature(signature: ArrayBuffer) {
-	const signature_slice = Buffer.from(signature.slice(0, 6));
-	// hardcoded magic signatures, sry. these signatures are: "GIF87a" and "GIF89a"
-	const GIF87a_SIG = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]);
-	const GIF89a_SIG = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
-
-	return (signature_slice.equals(GIF87a_SIG) || signature_slice.equals(GIF89a_SIG))
+interface JsonResponse {
+	message: string;
+	status: number;
+	statusText: string;
 }
+
+interface Responses {
+	success: {
+		OK: (url: string) => {};
+	};
+	reject: {
+		UnsupportedMediaType: JsonResponse;
+		BadRequest: JsonResponse;
+		PayloadTooLarge: JsonResponse;
+		ServiceUnavailable: JsonResponse;
+		InternalServerError: JsonResponse;
+		Conflict: JsonResponse;
+	};
+}
+
+const responses: Responses = {
+	success: {
+		OK: (url: string) => ({
+			message: `Success`,
+			status: 20,
+			statusText: `OK`,
+			url: url
+		})
+	},
+	reject: {
+		UnsupportedMediaType: {
+			message: `Content-Type mismatch`,
+			status: 415,
+			statusText: `Unsupported Media Type`
+		},
+		BadRequest: {
+			message: `Missing or invalid parameters, expected a file`,
+			status: 400,
+			statusText: `Bad Request`
+		},
+		PayloadTooLarge: {
+			message: 'The file size exceeded the maximum limit',
+			status: 413,
+			statusText: 'Payload Too Large'
+		},
+		ServiceUnavailable: {
+			message: 'Issue uploading cloud storage',
+			status: 413,
+			statusText: 'Service Unavailable'
+		},
+		InternalServerError: {
+			message: 'Database error',
+			status: 500,
+			statusText: 'Internal Server Error'
+		},
+		Conflict: {
+			message: 'Duplicate entry',
+			status: 409,
+			statusText: 'Conflict'
+		}
+	}
+};
 
 function validateGifAttributes(file: File): boolean {
-	return file.type == 'image/gif' && path.extname(file.name) == '.gif';
+	return file.type === 'image/gif' && path.extname(file.name) === '.gif';
+}
+function validateSignature(signature: Buffer) {
+	const slice = signature.subarray(0, 6);
+	const GIF87a = Buffer.from('GIF87a', 'utf8');
+	const GIF89a = Buffer.from('GIF89a', 'utf8');
+	return slice.equals(GIF87a) || slice.equals(GIF89a);
 }
 
-function onlyChangeFileExt(srcFilename: string, outputType: string) {
+function changeFileExt(srcFilename: string, ext: string) {
 	const inputFilename = path.basename(srcFilename, path.extname(srcFilename));
 
-	return inputFilename + outputType;
+	return inputFilename + ext;
+}
+
+async function processVideo(fileBuffer: Buffer, file: fileObject) {
+	return new Promise((resolve, reject) => {
+		try {
+			ffmpeg(Readable.from(fileBuffer))
+				.videoCodec('libvpx-vp9')
+				.save(file.localPath)
+				.on('end', () => {
+					resolve(`Finished encoding ${file.fileName}`);
+				})
+				.on('error', () => {
+					throw `Error while encoding with ffmpeg`;
+				});
+		} catch (err) {
+			reject(err);
+		}
+	});
 }
 
 function getHash(buffer: Buffer): string {
-	const hash = crypto.createHash('md5');
-	hash.update(buffer);
+	const hash = crypto.createHash('md5').update(buffer);
 	return hash.digest('hex');
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
+	// ------------------------------------------------------------
+	// request validation
+	// ------------------------------------------------------------
+
 	const contentType = request.headers.get('Content-Type');
 	if (!contentType || !contentType.includes('multipart')) {
-		return json(ResponseStatus.NO_FILE);
+		return json(responses.reject.UnsupportedMediaType);
 	}
 
 	const formData = await request.formData();
 	const file = formData.get('file');
 
 	if (!file || !(file instanceof File)) {
-		return json(ResponseStatus.NO_FILE);
+		return json(responses.reject.BadRequest);
+	}
+	// ------------------------------------------------------------
+	// file validation
+	// ------------------------------------------------------------
+
+	// this is only used in the two checks below, see next comment block
+	const fileBufferTmp = Buffer.from(await file.arrayBuffer());
+
+	if (file.size > parseInt(PUBLIC_FILE_SIZE_LIMIT)) {
+		return json(responses.reject.PayloadTooLarge);
+	}
+	if (!validateGifAttributes(file) || !validateSignature(fileBufferTmp)) {
+		return json(responses.reject.UnsupportedMediaType);
 	}
 
-	const arrayBuffer = await file.arrayBuffer();
+	// we dont do this earlier because we want to do file validation checks
+	// before we do anything CPU intensive,
+	// therefore: fileBufferTmp->fileBuffer through sharp
 
-	if (!validateGifAttributes(file) || !validateSignature(arrayBuffer)) {
-		return json(ResponseStatus.INVALID_FILE);
-	}
+	const fileBuffer = await sharp(fileBufferTmp, { animated: true }).gif().toBuffer();
 
-	if (file.size > MAX_FILESIZE) {
-		return json(ResponseStatus.FILE_TOO_BIG);
-	}
+	// TODO: remove magic string
+	const tmpFolder = 'tmp';
 
 	const srcFilename = sanitize(file.name);
-	//const outputFilePath = changeFileExt(srcFilename, '.webp');
-	const outputFilename = onlyChangeFileExt(srcFilename, '.gif');
+	const srcLocalPath = path.join(tmpFolder, srcFilename);
+	const srcRemotePath = getRemotePath(srcFilename);
+	const srcHash = getHash(fileBuffer);
 
-	const sharpFile = sharp(arrayBuffer, { animated: true });
-	const gif = await sharpFile.gif().toBuffer();
+	const previewFilename = changeFileExt(srcFilename, '.webm');
+	const previewLocalPath = path.join(tmpFolder, previewFilename);
+	const previewRemotePath = getRemotePath(previewFilename);
 
-	
+	// if the filename deformed the URL somehow, reject
+	if (!srcRemotePath || !previewRemotePath) {
+		return json(responses.reject.BadRequest);
+	}
+
+	const srcFile: fileObject = {
+		fileName: srcFilename,
+		localPath: srcLocalPath,
+		remotePath: srcRemotePath,
+		contentType: 'image/gif'
+	};
+	const previewFile: fileObject = {
+		fileName: previewFilename,
+		localPath: previewLocalPath,
+		remotePath: previewRemotePath,
+		contentType: 'video/webm'
+	};
 
 	// ------------------------------------------------------------
-	// Database Operations
+	// ffmpeg & cloud storage upload
 	// ------------------------------------------------------------
 
 	try {
-		const sqlValues = [
-			`https://storage.googleapis.com/${GIF_BUCKET_NAME}/${outputFilename}`, // original_file_url
-			`https://storage.googleapis.com/${GIF_BUCKET_NAME}/${outputFilename}`, // compressed_file_url
-			getHash(gif) // md5hash
-		];
+		// 1. we start the first upload as soon as we can
+		// 2. meanwhile we process the preview video
+		// 3. start & await the second upload
+		// 4. await the first upload;
 
-		const connection = locals.db; // TODO: needs a type
-		const sql = SQL_Statements.upload
+		const srcFileUpload = Upload(srcFile, fileBuffer);
+		await processVideo(fileBuffer, previewFile);
+		const previewBuffer = await readFile(previewFile.localPath);
+		await Upload(previewFile, previewBuffer);
+		await srcFileUpload;
+	} catch (err) {
+		try {
+			// cleanup
+			await unlink(previewFile.localPath);
+		} catch (err) {
+			// file doesn't exist, no need to remove it
+		}
+		return json(responses.reject.ServiceUnavailable);
+	}
 
-		const [result] = await connection.query(sql, sqlValues);
+	// ------------------------------------------------------------
+	// database
+	// ------------------------------------------------------------
 
+	try {
+		const conn: mysql.PoolConnection = await pool.getConnection();
+		const sql = SQL_Statements.upload;
+		await conn.query(sql, [srcFile.fileName, srcFile.remotePath, previewFile.remotePath, srcHash]);
+		conn.release();
 	} catch (err) {
 		const sqlError = err as MySQLError;
-		let returnError = ResponseStatus.UNKNOWN_ERROR;
-
-		// duplicate entry error
 		if (sqlError.errno === 1062) {
-			returnError = ResponseStatus.DUPLICATE_ENTRY;
+			return json(responses.reject.Conflict);
 		}
-
-		// TODO: add error logging
-
-		return json(returnError);
+		return json(responses.reject.InternalServerError);
 	}
 
-	// ------------------------------------------------------------
-	// Cloud Storage Operations
-	// ------------------------------------------------------------
-
-	try {
-		const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
-		const blob = storage.bucket(GIF_BUCKET_NAME).file(outputFilename);
-		const blobStream = blob.createWriteStream({
-			metadata: {
-				contentType: 'image/gif'
-			}
-		});
-		await stream.pipeline(Readable.from(gif), blobStream);
-	} catch (err) {
-		//TODO: add error interface
-		return json(ResponseStatus.UNKNOWN_ERROR); // TODO: cloud upload error
-	}
-
-	return json(ResponseStatus.SUCCESS);
+	return json(responses.success.OK(srcFile.remotePath));
 };
