@@ -22,5 +22,6 @@ interface Responses {
 		ServiceUnavailable: JsonResponse;
 		InternalServerError: JsonResponse;
 		Conflict: JsonResponse;
+		Unauthorized: JsonResponse;
 	};
 }

@@ -6,6 +6,6 @@ export async function load() {
 	const sql = SQL_Statements.gallery;	
 	const [results] = await connection.query(sql);
     const images = Array.isArray(results) ? results.map(element => element) : [];
-
+	connection.release();
 	return { images: images };
 }

@@ -14,7 +14,8 @@ import sharp from 'sharp';
 import mysql from 'mysql2/promise';
 
 // services
-import { Upload, getRemotePath } from '$lib/services/storage';
+import { upload, getRemotePath } from '$lib/services/storage';
+import { responses } from './responses';
 
 //.env public
 import { PUBLIC_FILE_SIZE_LIMIT } from '$env/static/public';
@@ -22,69 +23,6 @@ import { SQL_Statements } from '$lib/database/sql_queries';
 
 // db
 import { pool } from '$lib/database/db';
-
-interface JsonResponse {
-	message: string;
-	status: number;
-	statusText: string;
-}
-
-interface Responses {
-	success: {
-		OK: (url: string) => {};
-	};
-	reject: {
-		UnsupportedMediaType: JsonResponse;
-		BadRequest: JsonResponse;
-		PayloadTooLarge: JsonResponse;
-		ServiceUnavailable: JsonResponse;
-		InternalServerError: JsonResponse;
-		Conflict: JsonResponse;
-	};
-}
-
-const responses: Responses = {
-	success: {
-		OK: (url: string) => ({
-			message: `Success`,
-			status: 20,
-			statusText: `OK`,
-			url: url
-		})
-	},
-	reject: {
-		UnsupportedMediaType: {
-			message: `Content-Type mismatch`,
-			status: 415,
-			statusText: `Unsupported Media Type`
-		},
-		BadRequest: {
-			message: `Missing or invalid parameters, expected a file`,
-			status: 400,
-			statusText: `Bad Request`
-		},
-		PayloadTooLarge: {
-			message: 'The file size exceeded the maximum limit',
-			status: 413,
-			statusText: 'Payload Too Large'
-		},
-		ServiceUnavailable: {
-			message: 'Issue uploading cloud storage',
-			status: 413,
-			statusText: 'Service Unavailable'
-		},
-		InternalServerError: {
-			message: 'Database error',
-			status: 500,
-			statusText: 'Internal Server Error'
-		},
-		Conflict: {
-			message: 'Duplicate entry',
-			status: 409,
-			statusText: 'Conflict'
-		}
-	}
-};
 
 function validateGifAttributes(file: File): boolean {
 	return file.type === 'image/gif' && path.extname(file.name) === '.gif';
@@ -126,6 +64,11 @@ function getHash(buffer: Buffer): string {
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
+	
+	if (!await locals.auth())
+	{
+		return json(responses.reject.Unauthorized);
+	}
 	// ------------------------------------------------------------
 	// request validation
 	// ------------------------------------------------------------
@@ -196,26 +139,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	// ------------------------------------------------------------
 
 	try {
-		// 1. we start the first upload as soon as we can
-		// 2. meanwhile we process the preview video
-		// 3. start & await the second upload
-		// 4. await the first upload;
-
-		const srcFileUpload = Upload(srcFile, fileBuffer);
+		const srcFileUpload = upload(srcFile, fileBuffer);
 		await processVideo(fileBuffer, previewFile);
 		const previewBuffer = await readFile(previewFile.localPath);
-		await Upload(previewFile, previewBuffer);
-		await srcFileUpload;
+		const previewFileUpload = upload(previewFile, previewBuffer);
+
+		await Promise.all([srcFileUpload, previewFileUpload])
+
 	} catch (err) {
+		console.log(err); //TODO: logging
+		return json(responses.reject.ServiceUnavailable);
+	} finally {
 		try {
 			// cleanup
 			await unlink(previewFile.localPath);
 		} catch (err) {
 			// file doesn't exist, no need to remove it
 		}
-		return json(responses.reject.ServiceUnavailable);
 	}
-
 	// ------------------------------------------------------------
 	// database
 	// ------------------------------------------------------------

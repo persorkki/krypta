@@ -1,8 +1,10 @@
 <script lang="ts">
-	import { fade, fly, slide } from 'svelte/transition';
-	import { backInOut, backOut, backIn } from 'svelte/easing';
-	import { quintIn } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
+
 	import { page } from '$app/stores';
+
+	import Login from './Login.svelte';
+	import Logout from './Logout.svelte';
 
 	let darkMode = false;
 	function toggleDarkMode() {
@@ -24,10 +26,7 @@
 		<!-- navlinks -->
 		<nav class="flex gap-6 justify-evenly lg:justify-normal">
 			<a class="flex justify-center items-center gap-1 group" href="/">
-				<div
-					class="hidden lg:block ">
-					gifs
-				</div>
+				<div class="hidden lg:block">gifs</div>
 				<svg
 					class="h-icons-normal fill-primary dark:fill-primary-dark transition-colors duration-2000"
 					xmlns="http://www.w3.org/2000/svg"
@@ -41,11 +40,9 @@
 				<!--<img class="h-icons-normal" src="/Image.svg" alt="gifs" />-->
 			</a>
 
+			{#if $page.data.session}
 			<a class="flex justify-center items-center gap-1 group" href="/dashboard/upload">
-				<div
-					class="hidden lg:block ">
-					dashboard
-				</div>
+				<div class="hidden lg:block">dashboard</div>
 				<svg
 					class="h-icons-normal fill-primary dark:fill-primary-dark transition-colors duration-2000"
 					xmlns="http://www.w3.org/2000/svg"
@@ -57,7 +54,7 @@
 					></svg>
 				<!--<img class="h-icons-normal" src="/Dashboard.svg" alt="dashboard" />-->
 			</a>
-
+			{/if}
 			<!-- divider  -->
 			<div
 				class="hidden lg:block border-l border-l-border dark:border-l-border-dark transition-colors duration-2000">
@@ -97,20 +94,11 @@
 				class="hidden lg:block border-l border-l-border dark:border-l-border-dark transition-colors duration-2000">
 			</div>
 			<!-- login -->
-			<!-- svelte-ignore a11y-invalid-attribute -->
-			<a href="#" class="flex justify-center items-center gap-1 text-emerald-500">
-				<div class="hidden lg:block">login</div>
-				<!--<img class="h-icons-normal" src="/LogIn.svg" alt="login" />-->
-				<svg
-					class="h-icons-normal fill-primary dark:fill-primary-dark transition-colors duration-2000"
-					xmlns="http://www.w3.org/2000/svg"
-					xmlns:xlink="http://www.w3.org/1999/xlink"
-					viewBox="0 0 24 24"
-					><path
-						d="M9 2h9c1.1 0 2 .9 2 2v16c0 1.1-.9 2-2 2H9c-1.1 0-2-.9-2-2v-2h2v2h9V4H9v2H7V4c0-1.1.9-2 2-2z"
-					></path
-					><path d="M10.09 15.59L11.5 17l5-5l-5-5l-1.41 1.41L12.67 11H3v2h9.67z"></path></svg>
-			</a>
+			{#if !$page.data.session}
+				<Login />
+			{:else}
+				<Logout />
+			{/if}
 		</nav>
 	</div>
 </div>

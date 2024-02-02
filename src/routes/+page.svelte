@@ -1,31 +1,46 @@
 <script lang="ts">
-	/** @type {import('./$types').PageData} */
-	export let data: { images: { compressed_file_url: string; original_file_url: string }[] };
+	import { elasticOut } from "svelte/easing";
+	import { fly } from "svelte/transition";
 
+	/** @type {import('./$types').PageData} */
+	export let data: { images: { compressed_file_url: string; filename: string, original_file_url: string }[] };
+	
+	let wasLinkCopied = false;
 	let filterText = '';
+
 
 	function focusOnMount(element: HTMLElement) {
 		element.focus();
 	}
 
 	function copy(element) {
-		navigator.clipboard.writeText(element.target.dataset.url ?? '');
+		navigator.clipboard.writeText(element.target.dataset.url);
+		wasLinkCopied = true;
+		
+		setTimeout(() => {
+			wasLinkCopied = false;
+		}, 5000);
 	}
 
+	$: console.log(filterText);
+	$: console.log(filteredData);
 	$: filteredData =
-		filterText.length === 0
+		filterText.length <= 0
 			? [...data.images]
-			: data.images.filter((x) => x.original_file_url.includes(filterText));
+			: data.images.filter((x) => x.filename.includes(filterText));
 </script>
 
-<div class="text-neutral-500 text-md w-4/5 mx-auto">
+
+<div class="text-neutral-500 text-md lg:w-4/5 mx-auto">
 	<!-- filter -->
-	<div class="flex justify-center p-6">
+	<div class="flex justify-center lg:p-6 p-3">
 		<div
-			class="rounded-xl w-2/6 p-3 gap-3 flex text-primary bg-border dark:text-primary-dark dark:bg-border-dark text-lg outline-none transition-colors duration-2000">
+			class="rounded-xl lg:w-2/6 w-full p-3 gap-3 flex text-primary bg-border dark:text-primary-dark dark:bg-border-dark text-lg outline-none transition-colors duration-2000">
 			<input
 				class="w-full outline-none bg-border dark:text-primary-dark font-bold dark:bg-border-dark transition-colors duration-2000"
-				placeholder="type here to filter..." />
+				placeholder="type here to filter..."
+				bind:value={filterText}
+				use:focusOnMount />
 			<svg
 				class="w-[36px] pointer-events-none cursor-auto fill-primary dark:fill-primary-dark transition-colors duration-2000"
 				xmlns="http://www.w3.org/2000/svg"
@@ -39,26 +54,23 @@
 	</div>
 
 	<!-- gallery -->
-	<div class="flex flex-wrap bg-border p-6 rounded-xl">
-		{#each data.images as image}
-			<!--
-			<img
-				on:click={copy}
-				class="aspect-video w-1/5 object-cover dark:dark-mode-img"
-				data-url={image.original_file_url}
-				src={image.compressed_file_url}
-				alt={image.original_file_url} />
-			-->
+	<div class="flex flex-wrap bg-border dark:bg-border-dark">
+		{#each filteredData as image (image.id)}
 			<video
 				autoPlay
 				loop
 				muted
 				playsInline
-				class="aspect-video w-1/5 object-cover"
+				class="lg:aspect-video aspect-square lg:w-1/4 w-2/6 object-cover"
 				data-url={image.original_file_url}
 				on:click={copy}>
 				<source type="video/webm" src={image.compressed_file_url} />
 			</video>
 		{/each}
 	</div>
+	{#if wasLinkCopied}
+	<div on:click={() => wasLinkCopied = !wasLinkCopied } out:fly={{ duration: 800}} in:fly={{ duration: 500, y: 64, easing: elasticOut }} class="fixed left-0 right-0 bottom-0 bg- flex justify-center items-end p-6">
+		<div class="toast bg-secondary text-primary-dark font-bold font-sans text-lg p-6 rounded-xl drop-shadow-lg cursor-pointer">Link copied!</div>
+	</div>
+	{/if}
 </div>

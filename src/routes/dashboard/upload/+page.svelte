@@ -16,7 +16,7 @@
 	function copy(element) {
 		navigator.clipboard.writeText(element.target.textContent);
 		wasLinkCopied = true;
-		element;
+		
 		setTimeout(() => {
 			wasLinkCopied = false;
 		}, 5000);
@@ -67,7 +67,7 @@
 	}
 </script>
 
-<div class="flex flex-col w-4/5 mx-auto">
+<div class="flex flex-col lg:w-4/5 w-11/12 mx-auto">
 	<!-- upload box -->
 	<form class=" flex flex-col gap-3">
 		<!-- TODO: uplloadState needs to be a object or something that has the colors and state together -->

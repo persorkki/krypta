@@ -1,12 +1,19 @@
-/*
-import {  pool } from './lib/database/db';
+import { SvelteKitAuth } from '@auth/sveltekit';
+import Credentials from '@auth/sveltekit/providers/credentials';
+import { AUTH_ID, AUTH_SECRET } from '$env/static/private';
 
-export async function handle({event, resolve}){
-    if (event.url.pathname === "/" || event.url.pathname === "/dashboard/upload") {
-        //event.locals.db = dbConn;
-        event.locals.pool = pool;
-    }
-
-    return resolve(event);
-}
-*/
+export const handle = SvelteKitAuth({
+	providers: [
+		Credentials({
+			credentials: { user: {}, password: {} },
+			authorize: async (credentials) => {
+				let user = null;
+				if (credentials.user === AUTH_ID && credentials.password === AUTH_SECRET) {
+					user = { name: 'crypt keeper' };
+				}
+				return user;
+			}
+		})
+	],
+	pages: { signIn: '/login' }
+});

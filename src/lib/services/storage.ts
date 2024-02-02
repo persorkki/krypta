@@ -27,7 +27,7 @@ export function getRemotePath(srcFilename: string): string | null {
 	return remotePath;
 }
 
-export async function Upload(file: fileObject, fileBuffer: Buffer) {
+export async function upload(file: fileObject, fileBuffer: Buffer) {
 	return new Promise(async (resolve, reject) => {
 		try {
 			const storage = new Storage({ keyFilename: SERVICE_ACCOUNT_JSON_PATH });
