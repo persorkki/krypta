@@ -22,8 +22,6 @@
 		}, 5000);
 	}
 
-	$: console.log(filterText);
-	$: console.log(filteredData);
 	$: filteredData =
 		filterText.length <= 0
 			? [...data.images]
